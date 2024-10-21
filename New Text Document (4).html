@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aircraft Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #333;
+    }
+    canvas {
+      display: block;
+      background-color: black;
+    }
+    #info {
+      color: white;
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+    }
+    #levelSliderContainer {
+      position: absolute;
+      top: 50px;
+      left: 10px;
+      color: white;
+    }
+    #gameOver {
+      color: red;
+      font-size: 32px;
+      text-align: center;
+      position: absolute;
+      width: 100%;
+      top: 40%;
+      display: none;
+    }
+    #startButton {
+      position: absolute;
+      top: 100px;
+      left: 10px;
+      padding: 10px 20px;
+      font-size: 18px;
+      background-color: green;
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: block;  /* Show the start button */
+    }
+    #startAgainButton {
+      position: absolute;
+      top: 150px;
+      left: 10px;
+      padding: 10px 20px;
+      font-size: 18px;
+      background-color: blue;
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: none;  /* Initially hidden */
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="info">
+    Score: <span id="score">0</span> |
+    Level: <span id="level">1</span>
+  </div>
+  <div id="levelSliderContainer">
+    <label for="levelSlider">Set Starting Level: </label>
+    <input type="range" id="levelSlider" min="1" max="10" value="1">
+    <span id="sliderValue">1</span>
+  </div>
+  <button id="startButton">Start Game</button>
+  <button id="startAgainButton">Start Again</button>
+  <div id="gameOver">Thank you SL has not been met, You are Fired</div>
+
+  <script>
+    // Setup the game canvas
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Aircraft object
+    const aircraft = {
+      x: canvas.width / 2,
+      y: canvas.height - 100,
+      width: 60,
+      height: 60,
+      speed: 20  // Slower movement
+    };
+
+    // Printer enemy
+    let printer = {
+      x: Math.random() * (canvas.width - 100),
+      y: 50,
+      width: 100,
+      height: 100,
+      speed: 2,  // Base speed, will increase per level
+      isAlive: true
+    };
+
+    // Game variables
+    let bullets = [];
+    let score = 0;
+    let level = 1;
+    let gameOver = false;
+    let kills = 0;
+    const killsPerLevel = 10;
+    const maxLevel = 10;
+    let gameStarted = false;
+
+    // Track key presses
+    let keysPressed = {};
+
+    // Slider elements
+    const levelSlider = document.getElementById('levelSlider');
+    const sliderValue = document.getElementById('sliderValue');
+    const startButton = document.getElementById('startButton');
+    const startAgainButton = document.getElementById('startAgainButton');
+
+    // Update the slider value display
+    levelSlider.addEventListener('input', () => {
+      sliderValue.textContent = levelSlider.value;
+    });
+
+    // Start the game when the Start button is clicked
+    startButton.addEventListener('click', () => {
+      level = parseInt(levelSlider.value);
+      updateLevel();
+      setPrinterSpeed();
+      gameStarted = true;
+      startButton.style.display = 'none';  // Hide the start button after game starts
+      levelSliderContainer.style.display = 'none';  // Hide the level slider
+      gameLoop();  // Start the game loop
+    });
+
+    // Start again when the Start Again button is clicked
+    startAgainButton.addEventListener('click', () => {
+      resetGame();
+    });
+
+    // Reset the game when 'R' is pressed after game over
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'r' && gameOver) {
+        resetGame();
+      }
+      keysPressed[event.key] = true;
+    });
+
+    document.addEventListener('keyup', (event) => {
+      delete keysPressed[event.key];
+    });
+
+    // Draw the aircraft with "FLE" text
+    function drawAircraft() {
+      ctx.fillStyle = 'blue';
+      ctx.beginPath();
+      ctx.moveTo(aircraft.x + aircraft.width / 2, aircraft.y);
+      ctx.lineTo(aircraft.x, aircraft.y + aircraft.height);
+      ctx.lineTo(aircraft.x + aircraft.width, aircraft.y + aircraft.height);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = 'white';
+      ctx.font = '20px Arial';
+      ctx.fillText('FLE', aircraft.x + 10, aircraft.y + 40);
+    }
+
+    // Draw the printer with "HP Printer" text
+    function drawPrinter() {
+      if (printer.isAlive) {
+        ctx.fillStyle = 'red';
+        ctx.fillRect(printer.x, printer.y, printer.width, printer.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.fillText('HP Printer', printer.x + 10, printer.y + 55);
+      }
+    }
+
+    // Draw bullets
+    function drawBullets() {
+      ctx.fillStyle = 'yellow';
+      bullets.forEach((bullet, index) => {
+        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+        bullet.y -= bullet.speed;
+
+        // Check for collision with printer
+        if (printer.isAlive && bullet.y < printer.y + printer.height &&
+            bullet.x > printer.x && bullet.x < printer.x + printer.width) {
+          printer.isAlive = false;
+          score++;
+          kills++;
+          updateScore();
+          checkLevelUp();
+          resetPrinter();
+        }
+
+        // Remove bullets that go off screen
+        if (bullet.y < 0) {
+          bullets.splice(index, 1);
+        }
+      });
+    }
+
+    // Update game info
+    function updateScore() {
+      document.getElementById('score').innerText = score;
+    }
+
+    function updateLevel() {
+      document.getElementById('level').innerText = level;
+    }
+
+    // Handle movement and shooting
+    function handleInput() {
+      if (keysPressed['ArrowLeft'] && aircraft.x > 0) {
+        aircraft.x -= aircraft.speed;
+      }
+      if (keysPressed['ArrowRight'] && aircraft.x < canvas.width - aircraft.width) {
+        aircraft.x += aircraft.speed;
+      }
+      if (keysPressed[' ']) {  // Space for shooting
+        // Limit bullet creation to avoid spamming
+        if (bullets.length === 0 || bullets[bullets.length - 1].y < aircraft.y - 50) {
+          bullets.push({
+            x: aircraft.x + aircraft.width / 2 - 2,
+            y: aircraft.y,
+            width: 4,
+            height: 10,
+            speed: 25  // Fast bullet speed
+          });
+        }
+      }
+    }
+
+    // Reset printer after being destroyed
+    function resetPrinter() {
+      printer.x = Math.random() * (canvas.width - printer.width);
+      printer.y = 50;
+      printer.isAlive = true;
+    }
+
+    // Check if it's time to level up (every 10 kills)
+    function checkLevelUp() {
+      if (kills >= killsPerLevel) {
+        level++;
+        kills = 0;  // Reset kills for the next level
+        if (level > maxLevel) {
+          winGame();
+        } else {
+          setPrinterSpeed();  // Increase speed for the next level
+          updateLevel();
+        }
+      }
+    }
+
+    // Set printer speed based on level
+    function setPrinterSpeed() {
+      printer.speed = 2 + (level - 1) * 1.5;  // Base speed increases per level
+    }
+
+    // Game loop
+    function gameLoop() {
+      if (!gameOver) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        handleInput();  // Handle key inputs
+        drawAircraft();
+        drawPrinter();
+        drawBullets();
+
+        // Move printer down faster per level
+        if (printer.isAlive) {
+          printer.y += printer.speed;
+        }
+
+        // Check if the printer reaches the bottom
+        if (printer.y + printer.height > canvas.height) {
+          endGame();
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+    }
+
+    // End the game
+    function endGame() {
+      gameOver = true;
+      document.getElementById('gameOver').style.display = 'block';  // Show game over message
+      startAgainButton.style.display = 'block';  // Show start again button
+    }
+
+    // Reset the game
+    function resetGame() {
+      aircraft.x = canvas.width / 2;
+      aircraft.y = canvas.height - 100;
+      bullets = [];
+      score = 0;
+      level = 1;
+      kills = 0;
+      gameOver = false;
+      printer.isAlive = true;
+      printer.y = 50;
+      printer.x = Math.random() * (canvas.width - printer.width);
+      updateScore();
+      updateLevel();
+      startButton.style.display = 'none';  // Hide the start button
+      startAgainButton.style.display = 'none';  // Hide the start again button
+      document.getElementById('gameOver').style.display = 'none';  // Hide game over message
+      levelSliderContainer.style.display = 'block';  // Show the level slider
+      gameLoop();  // Restart the game loop
+    }
+
+  </script>
+</body>
+</html>
